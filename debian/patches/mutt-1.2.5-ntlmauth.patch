@@ -1,0 +1,184 @@
+--- mutt-1.2.5/configure.in.orig	Fri Jul 28 20:50:24 2000
++++ mutt-1.2.5/configure.in	Sat Oct 21 20:06:58 2000
+@@ -449,6 +449,26 @@
+ ])
+ AM_CONDITIONAL(BUILD_IMAP, test x$need_imap = xyes)
+ 
++AC_ARG_WITH(ntlm, [  --with-ntlm[=DIR]        Compile in NTLM authentication for IMAP],
++      [
++      if test "$with_ntlm" != "no"
++      then
++        if test "$with_ntlm" != "yes"
++        then
++          CPPFLAGS="$CPPFLAGS -I$with_ntlm/include"
++          LDFLAGS="$LDFLAGS -L$with_ntlm/lib"
++        fi
++
++        saved_LIBS="$LIBS"
++        AC_CHECK_LIB(ntlm, buildSmbNtlmAuthResponse,,
++          AC_MSG_ERROR([could not find libntlm which is needed for ntlm authentication]))
++        LIBS="$saved_LIBS"
++        MUTTLIBS="$MUTTLIBS -lntlm"
++        AC_DEFINE(USE_NTLM)
++      fi
++])
++AM_CONDITIONAL(USE_NTLM, test x$need_ntlm = xyes)
++
+ AC_ARG_WITH(gss,    [    --with-gss[=DIR]         Compile in GSSAPI authentication for IMAP],
+ 	[
+ 	if test "$need_imap" != "yes"
+--- mutt-1.2.5/acconfig.h.orig	Thu May 18 11:43:22 2000
++++ mutt-1.2.5/acconfig.h	Sat Oct 21 19:53:59 2000
+@@ -42,6 +42,9 @@
+ /* Do you want support for the IMAP protocol? (--enable-imap) */
+ #undef USE_IMAP
+ 
++/* Do you want support for IMAP NTLM authentication? (--with-ntlm) */
++#undef USE_NTLM
++
+ /* Do you want support for IMAP GSSAPI authentication? (--with-gss) */
+ #undef USE_GSS
+ 
+--- mutt-1.2.5/imap/auth.c.orig	Fri Mar  3 11:10:23 2000
++++ mutt-1.2.5/imap/auth.c	Sat Oct 21 22:42:56 2000
+@@ -229,7 +229,88 @@
+   return -1;
+ }
+ 
++#if defined(USE_NTLM)
+ 
++#include <ntlm.h>
++
++int imap_auth_ntlm(IMAP_DATA *idata, char *user, char *pass)
++{
++  char buf[LONG_STRING];
++  char seq[16];
++  char tmpstr[32];
++  int len;
++  tSmbNtlmAuthRequest   request;              
++  tSmbNtlmAuthChallenge challenge;
++  tSmbNtlmAuthResponse  response;
++
++  mutt_message _("NTLM Authentication...");
++  imap_make_sequence (seq, sizeof (seq));
++
++  snprintf (buf, sizeof (buf), "%s AUTHENTICATE NTLM\r\n", seq);
++
++  mutt_socket_write (idata->conn, buf);
++
++  if (mutt_socket_read_line_d (buf, sizeof buf, idata->conn) < 0)
++    return -1;
++
++  if (buf[0] != '+')
++    return -1;
++
++  buildSmbNtlmAuthRequest(&request,user,NULL);
++
++#ifdef DEBUG
++  if (debuglevel > 0)
++    dumpSmbNtlmAuthRequest(debugfile,&request);
++#endif  
++
++  memset(buf,0,sizeof buf);
++  mutt_to_base64((unsigned char*)buf, (unsigned char*)&request, SmbLength(&request));
++  strcat(buf,"\r\n");
++
++  mutt_socket_write (idata->conn, buf);
++
++  if (mutt_socket_read_line_d (buf, sizeof buf, idata->conn) < 0)
++    return -1;
++
++  if ((buf[0] != '+') || (buf[1] != ' '))
++    return -1;
++
++  len = mutt_from_base64((char*)&challenge, buf+2);
++
++#ifdef DEBUG
++  if (debuglevel > 0)
++  dumpSmbNtlmAuthChallenge(debugfile,&challenge);
++#endif
++ 
++  buildSmbNtlmAuthResponse(&challenge, &response, user, pass);
++ 
++#ifdef DEBUG
++  if (debuglevel > 0)
++    dumpSmbNtlmAuthResponse(debugfile,&response);
++#endif
++   
++  memset(buf,0,sizeof buf);
++  mutt_to_base64((unsigned char*)buf, (unsigned char*)&response, SmbLength(&response));
++  strcat(buf,"\r\n");
++ 
++  mutt_socket_write (idata->conn, buf);
++   
++  if (mutt_socket_read_line_d (buf, sizeof buf, idata->conn) < 0)
++    return -1;
++ 
++  snprintf (tmpstr, sizeof tmpstr, "%s OK", seq);
++   
++  if (strncmp(buf,tmpstr,strlen(tmpstr)))
++  {
++    mutt_error _("Login failed.");
++    FREE (&ImapUser);
++    FREE (&ImapPass);
++    return -2;
++  }
++
++  return 0;
++}
++#endif
+ 
+ /* imap_authenticate: loop until success or user abort. At each loop, all
+  *   supported authentication methods are tried, from strongest to weakest.
+@@ -346,7 +427,7 @@
+     }
+     else
+       dprint (2, (debugfile, "CRAM-MD5 authentication is not available\n"));
+-        
++
+     if (! (conn->mx.flags & M_IMAP_PASS))
+     {
+       if (!ImapPass)
+@@ -364,6 +445,21 @@
+     }
+     else
+       strfcpy (pass, conn->mx.pass, sizeof (pass));
++
++#ifdef USE_NTLM
++    if (mutt_bit_isset (idata->capabilities, ANTLM))
++    {
++      if ((r = imap_auth_ntlm (idata, user, pass)))
++      {
++        mutt_error _("NTLM authentication failed.");
++        sleep (1);
++      }
++      else
++        return 0;
++    }
++    else
++      dprint (2, (debugfile, "NTLM authentication is not available\n"));
++#endif    
+ 
+     imap_quote_string (q_user, sizeof (q_user), user);
+     imap_quote_string (q_pass, sizeof (q_pass), pass);
+--- mutt-1.2.5/imap/imap_private.h.orig	Wed Jul 19 11:56:15 2000
++++ mutt-1.2.5/imap/imap_private.h	Sat Oct 21 19:34:27 2000
+@@ -97,6 +97,7 @@
+   ACRAM_MD5,			/* RFC 2195: CRAM-MD5 authentication */
+   AKERBEROS_V4,			/* AUTH=KERBEROS_V4 */
+   AGSSAPI,			/* RFC 1731: GSSAPI authentication */
++  ANTLM,                        /* AUTH=NTLM for MS Exchange Server */
+   /* From here down, we don't care */
+   ALOGIN,			/* AUTH=LOGIN */
+   AUTH_LOGIN,			/* AUTH-LOGIN */
+--- mutt-1.2.5/imap/command.c.orig	Mon Jul 10 12:33:20 2000
++++ mutt-1.2.5/imap/command.c	Sat Oct 21 19:31:51 2000
+@@ -32,7 +32,7 @@
+ static void cmd_parse_capabilities (IMAP_DATA *idata, char *s);
+ 
+ static char *Capabilities[] = {"IMAP4", "IMAP4rev1", "STATUS", "ACL", 
+-  "NAMESPACE", "AUTH=CRAM-MD5", "AUTH=KERBEROS_V4", "AUTH=GSSAPI", 
++  "NAMESPACE", "AUTH=CRAM-MD5", "AUTH=KERBEROS_V4", "AUTH=GSSAPI", "AUTH=NTLM", 
+   "AUTH=LOGIN", "AUTH-LOGIN", "AUTH=PLAIN", "AUTH=SKEY", "IDLE", 
+   "LOGIN-REFERRALS", "MAILBOX-REFERRALS", "QUOTA", "SCAN", "SORT", 
+   "THREAD=ORDEREDSUBJECT", "UIDPLUS", "AUTH=ANONYMOUS", NULL};
