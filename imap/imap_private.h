@@ -109,6 +109,7 @@ enum
   NAMESPACE,                   	/* RFC 2342: IMAP4 Namespace */
   ACRAM_MD5,			/* RFC 2195: CRAM-MD5 authentication */
   AGSSAPI,			/* RFC 1731: GSSAPI authentication */
+  ANTLM,                        /* AUTH=NTLM for MS Exchange Server */
   AUTH_ANON,			/* AUTH=ANONYMOUS */
   STARTTLS,			/* RFC 2595: STARTTLS */
   LOGINDISABLED,		/*           LOGINDISABLED */

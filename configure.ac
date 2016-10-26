@@ -622,6 +622,26 @@ fi
 
 dnl -- imap dependencies --
 
+AC_ARG_WITH(ntlm, [  --with-ntlm[=DIR]        Compile in NTLM authentication for IMAP],
+      [
+      if test "$with_ntlm" != "no"
+      then
+        if test "$with_ntlm" != "yes"
+        then
+          CPPFLAGS="$CPPFLAGS -I$with_ntlm/include"
+          LDFLAGS="$LDFLAGS -L$with_ntlm/lib"
+        fi
+
+        saved_LIBS="$LIBS"
+        AC_CHECK_LIB(ntlm, buildSmbNtlmAuthResponse,,
+          AC_MSG_ERROR([could not find libntlm which is needed for ntlm authentication]))
+        LIBS="$saved_LIBS"
+        MUTTLIBS="$MUTTLIBS -lntlm"
+        AC_DEFINE([USE_NTLM], [], [Do you want support for IMAP NTLM authentication? (--with-ntlm)])
+      fi
+])
+AM_CONDITIONAL(USE_NTLM, test x$need_ntlm = xyes)
+
 AC_ARG_WITH(gss, AC_HELP_STRING([--with-gss@<:@=PFX@:>@], [Compile in GSSAPI authentication for IMAP]), 
     gss_prefix="$withval", gss_prefix="no")
 if test "$gss_prefix" != "no"

@@ -553,6 +553,9 @@
 /* Define if you want to use the included regex.c. */
 #undef USE_GNU_REGEX
 
+/* Do you want support for IMAP NTLM authentication? (--with-ntlm) */
+#undef USE_NTLM
+
 /* Define if you have GSSAPI libraries available */
 #undef USE_GSS
 

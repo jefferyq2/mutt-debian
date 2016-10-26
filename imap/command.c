@@ -61,6 +61,7 @@ static char *Capabilities[] = {
   "NAMESPACE",
   "AUTH=CRAM-MD5",
   "AUTH=GSSAPI",
+  "AUTH=NTLM",
   "AUTH=ANONYMOUS",
   "STARTTLS",
   "LOGINDISABLED",

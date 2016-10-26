@@ -289,6 +289,11 @@ static void show_version (void)
 #else
 	"-USE_GSS  "
 #endif
+#ifdef USE_NTLM
+        "+USE_NTLM "
+#else
+        "-USE_NTLM "
+#endif
 
 #if HAVE_GETADDRINFO
 	"+HAVE_GETADDRINFO  "
