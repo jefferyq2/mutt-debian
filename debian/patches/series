@@ -77,4 +77,4 @@ mutt-patched/multiple-fcc
 # not-applied/w3mface
 # unapplied, not stable at the moment
 #mutt-patched/sidebar-newonly
-mutt-1.2.5-ntlmauth.patch
+#mutt-1.2.5-ntlmauth.patch
